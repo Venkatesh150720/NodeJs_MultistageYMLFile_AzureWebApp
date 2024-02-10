@@ -1,0 +1,106 @@
+trigger: none
+
+pool:
+  vmImage: Windows-2019
+
+variables:
+  - name  : webapp
+    value : venkyapp0102  
+
+stages:
+  - stage: stage1
+    displayName: Infra Provision
+    jobs:
+      - job: 
+        displayName: Infra Provision using Terraform
+        steps:
+          - task: TerraformInstaller@1
+            displayName: Terraform install
+            inputs:
+              terraformVersion: 'latest'
+
+          - task: TerraformTaskV4@4
+            displayName: Terraform init
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+              backendServiceArm: 'demo'
+              backendAzureRmResourceGroupName: 'demo1'
+              backendAzureRmStorageAccountName: 'venky2401'
+              backendAzureRmContainerName: 'statefile'
+              backendAzureRmKey: '1234'
+
+          - task: TerraformTaskV4@4
+            displayName: Tearrform validation
+            inputs:
+              provider: 'azurerm'
+              command: 'validate'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+
+          - task: TerraformTaskV4@4
+            displayName: Terraform plan
+            inputs:
+              provider: 'azurerm'
+              command: 'plan'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+              environmentServiceNameAzureRM: 'demo'
+
+          - task: TerraformTaskV4@4
+            displayName: terraform apply
+            inputs:
+              provider: 'azurerm'
+              command: 'apply'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+              environmentServiceNameAzureRM: 'demo'
+
+  - stage: stage2
+    dependsOn: stage1
+    displayName: Building the application
+    jobs:
+      - job:
+        displayName:  Building NodeJs application
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSource: 'spec'
+              versionSpec: '18.x'
+
+          - task: Npm@1
+            inputs:
+              command: 'install'
+
+          - task: ArchiveFiles@2
+            inputs:
+              rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
+              includeRootFolder: true
+              archiveType: 'zip'
+              archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+              replaceExistingArchive: true
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+               PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+               ArtifactName: 'code'
+               publishLocation: 'Container'
+
+  - stage: stage3
+    dependsOn: stage2
+    displayName: Deploy nodeJs application to Azure web app
+    
+    jobs:
+      - job:
+        displayName: DeployJob
+        steps:
+        
+        
+
+        - task: AzureRmWebAppDeployment@4
+          inputs:
+            ConnectionType: 'AzureRM'
+            azureSubscription: 'demo'
+            appType: 'webApp'
+            WebAppName: '${{variables.webapp}}'
+            packageForLinux: '$(System.DefaultWorkingDirectory)'
+
+        
